@@ -1,0 +1,1 @@
+async def all_data(self,data):
