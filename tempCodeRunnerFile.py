@@ -1,1 +1,3 @@
-async def all_data(self,data):
+
+                except queue.Empty:
+                    pass

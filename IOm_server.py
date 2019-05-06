@@ -1,7 +1,7 @@
 import socket
 import select
 import queue
-from model import Water
+from model import Data
 import threadManager
 from multiprocessing import Pool
 from orm import create_pool
@@ -9,6 +9,10 @@ import asyncio
 import time
 import io
 import sys
+from sklearn.externals import joblib
+import numpy as np
+import pandas as pd
+
 #改变标准输出的默认编码
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf8')
 
@@ -80,9 +84,12 @@ class Server(object):
         self.message = {}
         self.pool = Pool(4)
         self.data = []
+        self.svm_clf = joblib.load('./model/filename.joblib')
+        self.level = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        print("init succeed")
 
     def socket(self):
-        ip_port = ("127.0.0.1", 9999)
+        ip_port = ("192.168.43.209", 8080)
         sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sk.bind(ip_port)
         sk.listen(5)
@@ -131,7 +138,7 @@ class Server(object):
 
         loop = asyncio.get_event_loop()
         try:
-            client_data = r.recv(1024)
+            data = r.recv(1024)
         except Exception:
             pass
         task = create_pool(
@@ -142,28 +149,63 @@ class Server(object):
             password="admin",
             db="data")
         loop.run_until_complete(task)
-        print(client_data)
 
-        if client_data:
+        if data:
             self.outputs.append(r)
-            self.message[r].put(client_data)
-            loop.run_until_complete(self.data_save(client_data))
+            self.message[r].put(data)
+            loop.run_until_complete(self.data_save(data))
         else:
             self.inputs.remove(r)
             del self.message[r]
-        return client_data
+        return data
 
     async def data_save(self, data):
-        w = Water(
-            data=data,
+        data = str(data, encoding="utf-8")
+        print(data)
+        data1, data2, data3 = data.split("-")
+        data1 = round(float(data1), 2)
+        data2 = round((1 - float(data2) / 6000) * 100, 2)
+        data3 = round(float(data3),2)
+        data_set = {'N': [data1 + 100], 'P': [data2 + 100], 'K': [data3 + 100]}
+        x = pd.DataFrame(data_set)
+        output = self.svm_clf.predict(x)[0]
+        level = self.setlevel(output)
+        d = Data(
+            cid=3,
+            illumination=data3 ,
+            humidity=data2 ,
+            temperature=data1 ,
+            level=level,
             arrivetime=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-        await w.save()
+        await d.save()
 
     async def all_data(self):
-        w = Water()
-        datas = await w.findAll()
+        d = Data()
+        datas = await Data.findAll()
         for data in datas:
             self.data.append(data["data"])
+
+    def setlevel(self, output):
+        if (output > 6000):
+            return self.level[9]
+        if (output < 2000):
+            return self.level[0]
+        if (2000 < output < 2500):
+            return self.level[1]
+        if (2500 < output < 3000):
+            return self.level[2]
+        if (3000 < output < 3500):
+            return self.level[3]
+        if (3500 < output < 4000):
+            return self.level[4]
+        if (4000 < output < 4500):
+            return self.level[5]
+        if (4500 < output < 5000):
+            return self.level[6]
+        if (5000 < output < 5500):
+            return self.level[7]
+        if (5500 < output < 6000):
+            return self.level[8]
 
 
 if __name__ == "__main__":

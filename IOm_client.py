@@ -1,6 +1,6 @@
 import socket
 
-ip_port = ("127.0.0.1", 9999)
+ip_port = ("192.168.43.209", 8080)
 sk = socket.socket()
 sk.connect(ip_port)
 
